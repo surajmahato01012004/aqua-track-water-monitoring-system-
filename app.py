@@ -158,6 +158,7 @@ def chat():
         "political, financial, legal, religious, entertainment, or general chit-chat, "
         "politely decline and ask for a science/health question."
     )
+    model_id = os.environ.get("HF_CHAT_MODEL", "HuggingFaceTB/SmolLM3-3B:hf-inference")
     try:
         resp = requests.post(
             "https://router.huggingface.co/v1/chat/completions",
@@ -167,7 +168,7 @@ def chat():
                 "Content-Type": "application/json",
             },
             json={
-                "model": "mistralai/Mistral-7B-Instruct-v0.2",
+                "model": model_id,
                 "messages": [
                     {"role": "system", "content": system_prefix},
                     {"role": "user", "content": user_message},
