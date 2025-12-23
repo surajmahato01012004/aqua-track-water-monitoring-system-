@@ -15,6 +15,11 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "wqi.db")
 DB_URL = os.environ.get("DATABASE_URL")
+if DB_URL:
+    if DB_URL.startswith("postgres://"):
+        DB_URL = DB_URL.replace("postgres://", "postgresql+psycopg://", 1)
+    elif DB_URL.startswith("postgresql://") and "+psycopg" not in DB_URL:
+        DB_URL = DB_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = DB_URL if DB_URL else f"sqlite:///{DB_PATH}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
@@ -169,7 +174,7 @@ def chat():
                     {"role": "system", "content": system_prefix},
                     {"role": "user", "content": user_message},
                 ],
-                "max_tokens": 300,
+                "max_tokens": 512,
                 "temperature": 0.7,
             },
             timeout=30,
@@ -224,18 +229,50 @@ def chat():
 
     try:
         data = resp.json()
-        content = (
-            data.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
+        choice = data.get("choices", [{}])[0]
+        content = choice.get("message", {}).get("content", "")
+        finish_reason = choice.get("finish_reason", "")
     except Exception:
         return jsonify({"error": "Invalid response from chat service"}), 502
 
     if not content:
         content = "No answer available."
-    content = re.sub(r"<think>[\\s\\S]*?</think>", "", content, flags=re.IGNORECASE)
-    content = content.strip()
+    content = re.sub(r"<think>[\\s\\S]*?</think>", "", content, flags=re.IGNORECASE).strip()
+
+    if finish_reason == "length":
+        try:
+            resp_more = requests.post(
+                "https://router.huggingface.co/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model_id,
+                    "messages": [
+                        {"role": "system", "content": system_prefix},
+                        {"role": "user", "content": user_message},
+                        {"role": "assistant", "content": content},
+                        {"role": "user", "content": "Please finish your previous answer."}
+                    ],
+                    "max_tokens": 256,
+                    "temperature": 0.7,
+                },
+                timeout=30,
+            )
+            if resp_more.status_code < 400:
+                data2 = resp_more.json()
+                content2 = (
+                    data2.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                )
+                content2 = re.sub(r"<think>[\\s\\S]*?</think>", "", content2, flags=re.IGNORECASE).strip()
+                if content2:
+                    content = f"{content}\n\n{content2}"
+        except Exception:
+            pass
 
     return jsonify({"reply": content})
 @app.route('/data')
