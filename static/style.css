@@ -1,0 +1,68 @@
+/* Global Animated Water Background */
+#ripple-container {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: -1;
+    background: linear-gradient(to bottom, #6be3ff 0%, #25c7e8 40%, #0fa7cf 70%, #08799f 100%);
+}
+
+/* Canvas that draws the moving wave caustics */
+#ripple-container canvas.water-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    filter: contrast(120%) saturate(120%);
+    opacity: 0.85;
+}
+
+/* Ensure page content stays highly legible over water background */
+.content-contrast .card,
+.content-contrast .alert,
+.content-contrast .table,
+.content-contrast .modal-content,
+.content-contrast .dropdown-menu {
+    background-color: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(2px);
+}
+.content-contrast h1,
+.content-contrast h2,
+.content-contrast h3,
+.content-contrast h4,
+.content-contrast h5,
+.content-contrast h6,
+.content-contrast p,
+.content-contrast label,
+.content-contrast .form-label {
+    color: #082532;
+}
+.content-contrast .badge {
+    filter: saturate(120%) contrast(110%);
+}
+
+/* Scrolling marquee text for hardware banner */
+.marquee,
+.marquee-slow {
+    display: inline-block;
+    white-space: nowrap;
+    will-change: transform;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+}
+.marquee {
+    animation-name: marquee-left;
+    animation-duration: 10s;
+}
+.marquee-slow {
+    animation-name: marquee-left;
+    animation-duration: 14s;
+}
+@keyframes marquee-left {
+    0%   { transform: translateX(100%); }
+    100% { transform: translateX(-100%); }
+}

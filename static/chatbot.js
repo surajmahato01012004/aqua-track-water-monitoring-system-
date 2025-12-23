@@ -1,6 +1,7 @@
 const chatWindow = document.getElementById('chat-window');
 const inputEl = document.getElementById('user-input');
 const sendBtn = document.getElementById('send-btn');
+const clearBtn = document.getElementById('clear-btn');
 const loadingEl = document.getElementById('loading');
 const backendUrl = window.CHAT_BACKEND_URL || '/chat';
 
@@ -9,16 +10,40 @@ let lastSentAt = 0;
 const MIN_DELAY_MS = 5000;
 const TIMEOUT_MS = 30000;
 
+// Load history on startup
+window.addEventListener('DOMContentLoaded', loadHistory);
+
 function normalize(text) {
   return text.trim().toLowerCase();
 }
 
-function appendMessage(role, text) {
+function loadHistory() {
+  const history = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+  history.forEach(msg => {
+    appendMessage(msg.role, msg.text, false); // Don't save again
+  });
+}
+
+function saveToHistory(role, text) {
+  const history = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+  history.push({ role, text });
+  localStorage.setItem('chatHistory', JSON.stringify(history));
+}
+
+function clearHistory() {
+  localStorage.removeItem('chatHistory');
+  chatWindow.innerHTML = '';
+}
+
+function appendMessage(role, text, save = true) {
   const wrapper = document.createElement('div');
   wrapper.className = role === 'user' ? 'msg msg-user' : 'msg msg-assistant';
   wrapper.textContent = text;
   chatWindow.appendChild(wrapper);
   chatWindow.scrollTop = chatWindow.scrollHeight;
+  if (save) {
+    saveToHistory(role, text);
+  }
 }
 
 function setLoading(loading) {
@@ -36,7 +61,8 @@ async function sendMessage() {
 
   if (!canSend()) {
     const waitMs = MIN_DELAY_MS - (Date.now() - lastSentAt);
-    appendMessage('assistant', `Please wait ${(Math.ceil(waitMs / 1000))}s before sending another message.`);
+    const msg = `Please wait ${(Math.ceil(waitMs / 1000))}s before sending another message.`;
+    appendMessage('assistant', msg, false); // Don't save warning
     return;
   }
 
@@ -71,10 +97,14 @@ async function sendMessage() {
       const data = await resp.json();
       let reply = data.reply || data.error || 'No response';
       // Clean up response if backend didn't catch it
-      reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '');
-      reply = reply.replace(/Thinking Process:[\s\S]*?(?=\n\n|$)/gi, '');
-      reply = reply.trim();
-      appendMessage('assistant', reply);
+    reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    reply = reply.replace(/Thinking Process:[\s\S]*?(?=\n\n|$)/gi, '');
+
+    // Remove all single or double asterisks as requested
+    reply = reply.replace(/\*+/g, '');
+    
+    reply = reply.trim();
+    appendMessage('assistant', reply);
       cache.set(key, reply);
     }
   } catch (err) {
@@ -87,6 +117,9 @@ async function sendMessage() {
 }
 
 sendBtn.addEventListener('click', sendMessage);
+if (clearBtn) {
+  clearBtn.addEventListener('click', clearHistory);
+}
 inputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendMessage();
 });

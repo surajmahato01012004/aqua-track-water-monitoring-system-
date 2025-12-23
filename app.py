@@ -3,11 +3,14 @@ import os
 from datetime import datetime
 from math import radians, sin, cos, sqrt, atan2
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text, create_engine
+from sqlalchemy import text, create_engine, inspect
 import csv
 import threading
 import requests
 import re
+import pandas as pd
+import io
+from flask import send_file
 
 # --- Application Setup ---
 app = Flask(__name__)
@@ -38,18 +41,39 @@ db = SQLAlchemy(app)
 with app.app_context():
     try:
         db.create_all()
+        # Migration check for 'temperature' column in 'water_samples'
+        inspector = inspect(db.engine)
+        if inspector.has_table("water_samples"):
+            columns = [col['name'] for col in inspector.get_columns('water_samples')]
+            if 'temperature' not in columns:
+                print("Migrating: Adding 'temperature' column to water_samples table...")
+                with db.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE water_samples ADD COLUMN temperature FLOAT"))
+                    conn.commit()
+                print("Migration successful.")
     except Exception as e:
-        print(f"Error creating tables: {e}")
+        print(f"Error creating/migrating tables: {e}")
 iot_lock = threading.Lock()
 
 # --- WQI Calculation Constants ---
-PARAMETERS = {
-    'ph': {'standard': 8.5, 'ideal': 7.0, 'weight': 4},
-    'tds': {'standard': 500, 'ideal': 0, 'weight': 1},
-    'do': {'standard': 5, 'ideal': 14.6, 'weight': 5},
-    'turbidity': {'standard': 5, 'ideal': 0, 'weight': 3},
-    'nitrate': {'standard': 45, 'ideal': 0, 'weight': 2}
-}
+WEST_BENGAL_STATIC_DATA = [
+    {"name": "Ganga (Hooghly) River", "location": "Kolkata (Dakshineswar)", "latitude": 22.6531, "longitude": 88.3717, "wqi": 65, "status": "Poor", "category": "River / Drinking Source"},
+    {"name": "Damodar River", "location": "Durgapur", "latitude": 23.5204, "longitude": 87.3119, "wqi": 55, "status": "Poor", "category": "River / Industrial Area"},
+    {"name": "Teesta River", "location": "Jalpaiguri", "latitude": 26.5405, "longitude": 88.7193, "wqi": 35, "status": "Good", "category": "River"},
+    {"name": "Mahananda River", "location": "Siliguri", "latitude": 26.7075, "longitude": 88.4300, "wqi": 60, "status": "Poor", "category": "River / Urban Runoff"},
+    {"name": "Rupnarayan River", "location": "Kolaghat", "latitude": 22.4308, "longitude": 87.8700, "wqi": 45, "status": "Good", "category": "River"},
+    {"name": "Subarnarekha River", "location": "Jhargram", "latitude": 22.4500, "longitude": 86.9900, "wqi": 40, "status": "Good", "category": "River"},
+    {"name": "Jaldhaka River", "location": "Mathabhanga", "latitude": 26.3400, "longitude": 89.2100, "wqi": 30, "status": "Good", "category": "River"},
+    {"name": "Vidyadhari River", "location": "Haroa", "latitude": 22.6000, "longitude": 88.6800, "wqi": 80, "status": "Very Poor", "category": "River / Sewage"},
+    {"name": "Kangsabati River", "location": "Midnapore", "latitude": 22.4200, "longitude": 87.3200, "wqi": 42, "status": "Good", "category": "River / Irrigation"},
+    {"name": "Muriganga River", "location": "Kakdwip", "latitude": 21.8700, "longitude": 88.1800, "wqi": 50, "status": "Good", "category": "Estuary"},
+    # Kolkata Samples
+    {"name": "Hooghly River", "location": "Kolkata", "latitude": 22.5726, "longitude": 88.3639, "wqi": 62, "status": "Poor", "category": "River / Urban"},
+    {"name": "Rabindra Sarobar", "location": "Kolkata", "latitude": 22.5126, "longitude": 88.3498, "wqi": 45, "status": "Good", "category": "Lake / Recreational"},
+    {"name": "East Kolkata Wetlands", "location": "Kolkata", "latitude": 22.5500, "longitude": 88.4300, "wqi": 55, "status": "Poor", "category": "Wetland / Treatment"},
+    {"name": "Subhas Sarovar", "location": "Kolkata", "latitude": 22.5787, "longitude": 88.4003, "wqi": 40, "status": "Good", "category": "Lake / Recreational"},
+    {"name": "Salt Lake Water Body", "location": "Bidhannagar", "latitude": 22.5867, "longitude": 88.4173, "wqi": 48, "status": "Good", "category": "Lake / Urban"},
+]
 
 # --- ORM Models ---
 class Location(db.Model):
@@ -69,6 +93,7 @@ class WaterSample(db.Model):
     tds = db.Column(db.Float, nullable=True)
     turbidity = db.Column(db.Float, nullable=True)
     nitrate = db.Column(db.Float, nullable=True)
+    temperature = db.Column(db.Float, nullable=True)
     wqi = db.Column(db.Float, nullable=True, index=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
@@ -90,34 +115,57 @@ def clean_response(text):
     return text.strip()
 
 def calculate_wqi(data):
-    total_w = 0
-    total_qw = 0
+    IDEAL = {
+        "ph": 7.0,
+        "do": 14.6,
+        "turbidity": 0.0,
+        "tds": 0.0,
+        "nitrate": 0.0,
+        "temperature": 25.0
+    }
 
-    for param, config in PARAMETERS.items():
-        if param in data and data[param] is not None:
-            try:
-                observed = float(data[param])
-                standard = config['standard']
-                ideal = config['ideal']
-                weight = config['weight']
+    STANDARD = {
+        "ph": 8.5,
+        "do": 5.0,
+        "turbidity": 5.0,
+        "tds": 500.0,
+        "nitrate": 45.0,
+        "temperature": 30.0
+    }
 
-                if (standard - ideal) == 0:
-                    qi = 0
-                else:
-                    qi = 100 * (observed - ideal) / (standard - ideal)
+    # Step 1: Calculate K
+    try:
+        K = 1 / sum(1 / s for s in STANDARD.values())
+    except ZeroDivisionError:
+        return 0
 
-                if param == 'do':
-                    if observed >= standard:
-                        qi = 100 * (1 - observed / ideal)
-                    else:
-                        qi = 100 + 100 * (standard - observed) / standard
+    total_qw = 0.0
+    total_w = 0.0
 
-                qi = max(0, qi)
+    for param in STANDARD:
+        # Check if param exists in data and is not None
+        if param not in data or data.get(param) is None:
+            continue
 
-                total_qw += qi * weight
-                total_w += weight
-            except:
-                continue
+        try:
+            observed = float(data[param])
+            ideal = IDEAL[param]
+            standard = STANDARD[param]
+            weight = K / standard  # dynamic weight
+
+            # Step 2: Qi calculation
+            if param == "temperature":
+                qi = abs(observed - ideal) / (standard - ideal) * 100
+            else:
+                qi = (observed - ideal) / (standard - ideal) * 100
+
+            qi = max(qi, 0)  # clamp negative Qi
+
+            total_qw += qi * weight
+            total_w += weight
+
+        except (ValueError, TypeError, ZeroDivisionError):
+            continue
 
     if total_w == 0:
         return 0
@@ -183,6 +231,7 @@ def chat():
 
     system_prefix = (
         "You are a helpful assistant. Provide detailed and comprehensive answers when the user asks for explanations. "
+        "Keep your answers compact and brief yet logical and meaningful, ensuring the user gets a complete answer without being cut off. "
         "Do not include your internal chain of thought or reasoning process in the final output, only the response to the user."
     )
     model_id = os.environ.get("HF_CHAT_MODEL", "HuggingFaceTB/SmolLM3-3B:hf-inference")
@@ -201,7 +250,7 @@ def chat():
                     {"role": "system", "content": system_prefix},
                     {"role": "user", "content": user_message},
                 ],
-                "max_tokens": 2000,
+                "max_tokens": 3000,
                 "temperature": 0.7,
             },
             timeout=60,
@@ -229,7 +278,7 @@ def chat():
                             {"role": "system", "content": system_prefix},
                             {"role": "user", "content": user_message},
                         ],
-                        "max_tokens": 2000,
+                        "max_tokens": 3000,
                         "temperature": 0.7,
                     },
                     timeout=60,
@@ -294,7 +343,7 @@ def data_page():
                   .order_by(WaterSample.timestamp.desc())
                   .first())
         if sample and sample.wqi is None:
-            data = {"ph": sample.ph, "do": sample.do, "tds": sample.tds, "turbidity": sample.turbidity, "nitrate": sample.nitrate}
+            data = {"ph": sample.ph, "do": sample.do, "tds": sample.tds, "turbidity": sample.turbidity, "nitrate": sample.nitrate, "temperature": sample.temperature}
             sample.wqi = calculate_wqi(data)
             db.session.commit()
         wqi_val = sample.wqi if sample else None
@@ -314,8 +363,85 @@ def data_page():
             "tds": sample.tds if sample else None,
             "turbidity": sample.turbidity if sample else None,
             "nitrate": sample.nitrate if sample else None,
+            "temperature": sample.temperature if sample else None,
         })
-    return render_template("data.html", rows=rows)
+    return render_template("data.html", rows=rows, wb_data=WEST_BENGAL_STATIC_DATA)
+
+@app.route('/download_excel')
+def download_excel():
+    locations = Location.query.all()
+    data_list = []
+    
+    # User Data
+    for loc in locations:
+        sample = (WaterSample.query
+                  .filter_by(location_id=loc.id)
+                  .order_by(WaterSample.timestamp.desc())
+                  .first())
+        
+        row = {
+            "Location Name": loc.name,
+            "Latitude": loc.latitude,
+            "Longitude": loc.longitude,
+            "WQI": sample.wqi if sample else None,
+            "Status": get_status(sample.wqi)[0] if sample and sample.wqi is not None else "No Data",
+            "pH": sample.ph if sample else None,
+            "DO (mg/L)": sample.do if sample else None,
+            "TDS (mg/L)": sample.tds if sample else None,
+            "Turbidity (NTU)": sample.turbidity if sample else None,
+            "Nitrate (mg/L)": sample.nitrate if sample else None,
+            "Temperature (C)": sample.temperature if sample else None,
+            "Timestamp": sample.timestamp if sample else None,
+            "Type": "User Added"
+        }
+        data_list.append(row)
+    
+    # Static West Bengal Data
+    for item in WEST_BENGAL_STATIC_DATA:
+        row = {
+            "Location Name": item["name"] + " - " + item["location"],
+            "Latitude": item["latitude"],
+            "Longitude": item["longitude"],
+            "WQI": item["wqi"],
+            "Status": item["status"],
+            "pH": None,
+            "DO (mg/L)": None,
+            "TDS (mg/L)": None,
+            "Turbidity (NTU)": None,
+            "Nitrate (mg/L)": None,
+            "Temperature (C)": 25.0,
+            "Timestamp": None,
+            "Type": "Static Reference (West Bengal)"
+        }
+        data_list.append(row)
+
+    df = pd.DataFrame(data_list)
+    
+    # Try using openpyxl for Excel, fallback to CSV if missing
+    try:
+        import openpyxl
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Water Quality Data')
+        
+        output.seek(0)
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'water_quality_data_{datetime.now().strftime("%Y%m%d")}.xlsx'
+        )
+    except ImportError:
+        # Fallback to CSV
+        output = io.BytesIO()
+        df.to_csv(output, index=False)
+        output.seek(0)
+        return send_file(
+            output,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'water_quality_data_{datetime.now().strftime("%Y%m%d")}.csv'
+        )
 
 @app.route('/calculate', methods=['POST'])
 def calculate():
@@ -332,6 +458,8 @@ def calculate():
 def api_locations():
     locations = Location.query.all()
     output = []
+    
+    # User added locations
     for loc in locations:
         sample = (WaterSample.query
                   .filter_by(location_id=loc.id)
@@ -340,7 +468,7 @@ def api_locations():
         wqi_val = None
         if sample:
             if sample.wqi is None:
-                data = {"ph": sample.ph, "do": sample.do, "tds": sample.tds, "turbidity": sample.turbidity, "nitrate": sample.nitrate}
+                data = {"ph": sample.ph, "do": sample.do, "tds": sample.tds, "turbidity": sample.turbidity, "nitrate": sample.nitrate, "temperature": sample.temperature}
                 sample.wqi = calculate_wqi(data)
                 db.session.commit()
             wqi_val = sample.wqi
@@ -353,6 +481,27 @@ def api_locations():
             "status": status,
             "color": color
         })
+    
+    # Static West Bengal locations
+    for item in WEST_BENGAL_STATIC_DATA:
+        # Determine color based on WQI value using the standard get_status function
+        # If static data has hardcoded status, we might need to adjust logic, but using get_status is safer if we have WQI
+        # However, WEST_BENGAL_STATIC_DATA has 'wqi' and 'status'.
+        # Let's trust 'wqi' to derive the color if possible, or map status explicitly.
+        # Given the request, let's map status to the new colors strictly.
+        # But wait, get_status does exactly what is needed based on WQI.
+        # Let's use get_status(item["wqi"]) to ensure consistency.
+        status, color = get_status(item["wqi"])
+
+        output.append({
+            "name": item["name"] + " (" + item["location"] + ")",
+            "latitude": item["latitude"],
+            "longitude": item["longitude"],
+            "wqi": item["wqi"],
+            "status": status, # Overwrite static status with dynamically calculated one to be safe, or keep item["status"]
+            "color": color
+        })
+
     return jsonify(output)
 
 @app.route('/data/location', methods=['POST'])
@@ -391,6 +540,7 @@ def create_sample():
         "tds": f("tds"),
         "turbidity": f("turbidity"),
         "nitrate": f("nitrate"),
+        "temperature": f("temperature"),
     }
     sample = WaterSample(location_id=loc.id, **payload)
     sample.wqi = calculate_wqi(payload)
@@ -409,7 +559,8 @@ def update_sample(sample_id):
     sample.tds = f("tds", sample.tds)
     sample.turbidity = f("turbidity", sample.turbidity)
     sample.nitrate = f("nitrate", sample.nitrate)
-    payload = {"ph": sample.ph, "do": sample.do, "tds": sample.tds, "turbidity": sample.turbidity, "nitrate": sample.nitrate}
+    sample.temperature = f("temperature", sample.temperature)
+    payload = {"ph": sample.ph, "do": sample.do, "tds": sample.tds, "turbidity": sample.turbidity, "nitrate": sample.nitrate, "temperature": sample.temperature}
     sample.wqi = calculate_wqi(payload)
     db.session.commit()
     return jsonify({"status": "ok"}), 200
@@ -420,29 +571,6 @@ def delete_sample(sample_id):
     db.session.delete(sample)
     db.session.commit()
     return jsonify({"status": "ok"}), 200
-
-@app.route('/seed/kolkata', methods=['POST'])
-def seed_kolkata():
-    kolkata_points = [
-        {"name": "Hooghly River - Kolkata", "latitude": 22.5726, "longitude": 88.3639, "sample": {"ph": 7.4, "do": 5.8, "tds": 300, "turbidity": 4.0, "nitrate": 20}},
-        {"name": "Rabindra Sarobar", "latitude": 22.5126, "longitude": 88.3498, "sample": {"ph": 7.1, "do": 6.5, "tds": 250, "turbidity": 3.0, "nitrate": 12}},
-        {"name": "East Kolkata Wetlands", "latitude": 22.55, "longitude": 88.43, "sample": {"ph": 7.3, "do": 6.2, "tds": 270, "turbidity": 3.8, "nitrate": 16}},
-        {"name": "Subhas Sarovar", "latitude": 22.5787, "longitude": 88.4003, "sample": {"ph": 7.0, "do": 6.8, "tds": 230, "turbidity": 2.5, "nitrate": 10}},
-        {"name": "Salt Lake (Bidhannagar) Water Body", "latitude": 22.5867, "longitude": 88.4173, "sample": {"ph": 7.2, "do": 6.1, "tds": 240, "turbidity": 2.8, "nitrate": 11}},
-    ]
-    created = 0
-    for p in kolkata_points:
-        loc = Location.query.filter_by(latitude=p["latitude"], longitude=p["longitude"]).first()
-        if not loc:
-            loc = Location(latitude=p["latitude"], longitude=p["longitude"], name=p["name"])
-            db.session.add(loc)
-            db.session.commit()
-        sample = WaterSample(location_id=loc.id, **p["sample"])
-        sample.wqi = calculate_wqi(p["sample"])
-        db.session.add(sample)
-        db.session.commit()
-        created += 1
-    return jsonify({"status": "ok", "created": created})
 
 @app.route('/api/iot', methods=['POST', 'GET'])
 def ingest_iot():

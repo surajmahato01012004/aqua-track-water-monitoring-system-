@@ -1,35 +1,48 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AquaTrack: Database</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body class="bg-light">
-    <nav class="navbar navbar-dark bg-primary">
-        <div class="container">
-            <a class="navbar-brand">AquaTrack</a>
-            <div class="d-flex gap-2">
-                <a class="btn btn-light" href="{{ url_for('dashboard') }}">Dashboard</a>
-                <a class="btn btn-outline-light" href="{{ url_for('home') }}">Calculator</a>
-                <a class="btn btn-outline-light" href="{{ url_for('map_page') }}">Map</a>
-                <a class="btn btn-outline-light" href="{{ url_for('chatbot_page') }}">AI Chatbot</a>
-            </div>
-        </div>
-    </nav>
+{% extends "layout.html" %}
 
-    <div class="container mt-4">
+{% block title %}Aqua Track: Water Quality Monitoring System - Database{% endblock %}
+
+{% block content %}
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4 class="mb-0">Locations and Latest Samples</h4>
             <div class="d-flex gap-2">
-                <form method="post" action="{{ url_for('seed_kolkata') }}">
-                    <button class="btn btn-success">Seed Kolkata Samples</button>
-                </form>
+                <a href="{{ url_for('download_excel') }}" class="btn btn-primary">Download CSV/Excel</a>
             </div>
         </div>
 
+        <!-- Static West Bengal Data Section -->
+        <div class="card shadow mb-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">West Bengal Major Water Bodies (Static Reference)</h5>
+                <small class="text-muted">Educational reference data.</small>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Water Body</th>
+                            <th>Location</th>
+                            <th>Category</th>
+                            <th>WQI</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in wb_data %}
+                        <tr>
+                            <td>{{ item.name }}</td>
+                            <td>{{ item.location }}</td>
+                            <td>{{ item.category }}</td>
+                            <td><strong>{{ item.wqi }}</strong></td>
+                            <td><span class="badge bg-{{ 'success' if item.status in ['Excellent', 'Good'] else 'warning' if item.status == 'Poor' else 'danger' }}">{{ item.status }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <h5 class="mb-3">User Added Locations & Samples</h5>
         <div class="row g-3 mb-4">
             <div class="col-md-6">
                 <div class="card shadow">
@@ -89,6 +102,10 @@
                                     <label class="form-label">Nitrate</label>
                                     <input class="form-control" name="nitrate">
                                 </div>
+                                <div class="col">
+                                    <label class="form-label">Temperature</label>
+                                    <input class="form-control" name="temperature">
+                                </div>
                             </div>
                             <button class="btn btn-primary mt-2">Create</button>
                         </form>
@@ -115,59 +132,38 @@
                         {% for r in rows %}
                         <tr>
                             <td>{{ r.name }}</td>
-                            <td>{{ "%.5f"|format(r.latitude) }}</td>
-                            <td>{{ "%.5f"|format(r.longitude) }}</td>
-                            <td>{{ r.wqi if r.wqi is not none else "-" }}</td>
-                            <td><span class="badge bg-{{ r.color }}">{{ r.status }}</span></td>
-                            <td>{{ r.timestamp.strftime("%Y-%m-%d %H:%M:%S") if r.timestamp else "-" }}</td>
-                            <td class="text-nowrap">
-                                <form class="d-inline" method="post" action="{{ url_for('delete_location', location_id=r.location_id) }}">
-                                    <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete location and its samples?')">Delete Location</button>
-                                </form>
-                                {% if r.sample_id %}
-                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#edit{{ r.sample_id }}">Edit Sample</button>
-                                <form class="d-inline" method="post" action="{{ url_for('delete_sample', sample_id=r.sample_id) }}">
-                                    <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete sample?')">Delete Sample</button>
-                                </form>
+                            <td>{{ r.latitude }}</td>
+                            <td>{{ r.longitude }}</td>
+                            <td>
+                                {% if r.wqi %}
+                                    <span class="badge bg-{{ r.color }}">{{ r.wqi }}</span>
+                                {% else %}
+                                    <span class="text-muted">--</span>
                                 {% endif %}
                             </td>
-                        </tr>
-                        {% if r.sample_id %}
-                        <tr class="collapse" id="edit{{ r.sample_id }}">
-                            <td colspan="7">
-                                <form method="post" action="{{ url_for('update_sample', sample_id=r.sample_id) }}">
-                                    <div class="row">
-                                        <div class="col">
-                                            <label class="form-label">pH</label>
-                                            <input class="form-control" name="ph" value="{{ r.ph or '' }}">
-                                        </div>
-                                        <div class="col">
-                                            <label class="form-label">DO</label>
-                                            <input class="form-control" name="do" value="{{ r.do or '' }}">
-                                        </div>
-                                        <div class="col">
-                                            <label class="form-label">TDS</label>
-                                            <input class="form-control" name="tds" value="{{ r.tds or '' }}">
-                                        </div>
-                                        <div class="col">
-                                            <label class="form-label">Turbidity</label>
-                                            <input class="form-control" name="turbidity" value="{{ r.turbidity or '' }}">
-                                        </div>
-                                        <div class="col">
-                                            <label class="form-label">Nitrate</label>
-                                            <input class="form-control" name="nitrate" value="{{ r.nitrate or '' }}">
-                                        </div>
-                                    </div>
-                                    <button class="btn btn-primary mt-2">Save</button>
+                            <td>
+                                {% if r.status %}
+                                    {{ r.status }}
+                                {% else %}
+                                    <span class="text-muted">No Data</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if r.timestamp %}
+                                    {{ r.timestamp.strftime('%Y-%m-%d %H:%M') }}
+                                {% else %}
+                                    Never
+                                {% endif %}
+                            </td>
+                            <td>
+                                <form method="post" action="{{ url_for('delete_location', location_id=r.location_id) }}" onsubmit="return confirm('Delete?');">
+                                    <button class="btn btn-sm btn-danger">Delete</button>
                                 </form>
                             </td>
                         </tr>
-                        {% endif %}
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
-    </div>
-</body>
-</html>
+{% endblock %}
