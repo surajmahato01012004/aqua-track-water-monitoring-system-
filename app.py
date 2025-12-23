@@ -3,23 +3,64 @@ import os
 from datetime import datetime
 from math import radians, sin, cos, sqrt, atan2
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text, create_engine
 import csv
 import threading
 import requests
 import re
 
+# --- Application Setup ---
+app = Flask(__name__)
 BASE_DIR = os.path.dirname(__file__)
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "wqi.db")
-DB_URL = os.environ.get("DATABASE_URL")
-app.config["SQLALCHEMY_DATABASE_URI"] = DB
-Llation Constants ---i: , 'weight': 2}
-DBURLf DB_RLc(dsq)i///DB_PATH    __tablename__ = "locations"
+
+# Default to SQLite
+sqlite_uri = f"sqlite:///{DB_PATH}"
+app.config["SQLALCHEMY_DATABASE_URI"] = sqlite_uri
+
+# Check external DB if provided
+external_db_url = os.environ.get("DATABASE_URL")
+if external_db_url:
+    try:
+        # Test connection with a short timeout
+        test_engine = create_engine(external_db_url, connect_args={'connect_timeout': 3})
+        with test_engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        app.config["SQLALCHEMY_DATABASE_URI"] = external_db_url
+        print("Using external database.")
+    except Exception as e:
+        print(f"External database connection failed: {e}. Falling back to SQLite.")
+
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db = SQLAlchemy(app)
+with app.app_context():
+    try:
+        db.create_all()
+    except Exception as e:
+        print(f"Error creating tables: {e}")
+iot_lock = threading.Lock()
+
+# --- WQI Calculation Constants ---
+PARAMETERS = {
+    'ph': {'standard': 8.5, 'ideal': 7.0, 'weight': 4},
+    'tds': {'standard': 500, 'ideal': 0, 'weight': 1},
+    'do': {'standard': 5, 'ideal': 14.6, 'weight': 5},
+    'turbidity': {'standard': 5, 'ideal': 0, 'weight': 3},
+    'nitrate': {'standard': 45, 'ideal': 0, 'weight': 2}
+}
+
+# --- ORM Models ---
+class Location(db.Model):
+    __tablename__ = "locations"
     id = db.Column(db.Integer, primary_key=True)
     latitude = db.Column(db.Float, nullable=False, index=True)
-    longitude = db.Cole = db.Column(db.String(255), nullable=True)
-samples = db.relam
+    longitude = db.Column(db.Float, nullable=False, index=True)
+    name = db.Column(db.String(255), nullable=True)
+    samples = db.relationship("WaterSample", backref="location", lazy=True, cascade="all, delete-orphan")
+
+class WaterSample(db.Model):
     __tablename__ = "water_samples"
     id = db.Column(db.Integer, primary_key=True)
     location_id = db.Column(db.Integer, db.ForeignKey("locations.id"), nullable=False, index=True)
@@ -163,7 +204,7 @@ def chat():
                 "max_tokens": 1000,
                 "temperature": 0.7,
             },
-            timeout=30,
+            timeout=60,
         )
     except Exception as e:
         return jsonify({"error": "Chat service unreachable", "detail": str(e)}), 502
@@ -188,10 +229,10 @@ def chat():
                             {"role": "system", "content": system_prefix},
                             {"role": "user", "content": user_message},
                         ],
-                        "max_tokens": 300,
+                        "max_tokens": 1000,
                         "temperature": 0.7,
                     },
-                    timeout=30,
+                    timeout=60,
                 )
             except Exception as e2:
                 return jsonify({"error": "Chat service unreachable", "detail": str(e2)}), 502
@@ -206,10 +247,9 @@ def chat():
                 )
             except Exception:
                 return jsonify({"error": "Invalid response from chat service"}), 502
-            if not content:10
+            if not content:
                 content = "No answer available."
-            content = re.sub(r"<think>[\\s\\S]*?</think>", "", content, flags=re.IGNORECASE)
-            content = content.strip()
+            content = clean_response(content)
             return jsonify({"reply": content})
         return jsonify({"error": "Chat service failed", "detail": resp.text}), 502
 
@@ -225,10 +265,10 @@ def chat():
 
     if not content:
         content = "No answer available."
-    content = re.sub(r"<think>[\\s\\S]*?</think>", "", content, flags=re.IGNORECASE)
-    content = content.strip()
+    content = clean_response(content)
 
     return jsonify({"reply": content})
+
 @app.route('/data')
 def data_page():
     locations = Location.query.all()
