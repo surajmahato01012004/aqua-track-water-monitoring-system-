@@ -7,7 +7,7 @@ const backendUrl = window.CHAT_BACKEND_URL || '/chat';
 const cache = new Map();
 let lastSentAt = 0;
 const MIN_DELAY_MS = 5000;
-const TIMEOUT_MS = 15000;
+const TIMEOUT_MS = 30000;
 
 function normalize(text) {
   return text.trim().toLowerCase();
@@ -66,16 +66,16 @@ async function sendMessage() {
     clearTimeout(timeoutId);
 
     if (!resp.ok) {
-      const detail = await resp.text();
-      appendMessage('assistant', 'Sorry, the chat service is unavailable. Try again later.');
+      appendMessage('assistant', 'Sorry, I couldn’t reply. Please try again.');
     } else {
       const data = await resp.json();
-      const reply = data.reply || data.error || 'No response';
+      let reply = data.reply || data.error || 'No response';
+      reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
       appendMessage('assistant', reply);
       cache.set(key, reply);
     }
   } catch (err) {
-    appendMessage('assistant', 'Request timed out or failed. Please try again.');
+    appendMessage('assistant', 'Sorry, I couldn’t reply. Please try again.');
   } finally {
     setLoading(false);
     inputEl.value = '';

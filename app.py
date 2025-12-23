@@ -6,6 +6,7 @@ from flask_sqlalchemy import SQLAlchemy
 import csv
 import threading
 import requests
+import re
 
 # --- Application Setup ---
 app = Flask(__name__)
@@ -151,14 +152,9 @@ def chat():
     if not token:
         return jsonify({"error": "Server is not configured with Hugging Face token"}), 500
 
-    system_prefix = (
-        "You are a helpful assistant specialized in science and health. "
-        "Only answer questions related to science, medicine, biology, chemistry, physics, "
-        "public health, fitness, nutrition, and healthcare. If the question is unrelated, "
-        "political, financial, legal, religious, entertainment, or general chit-chat, "
-        "politely decline and ask for a science/health question."
-    )
+    system_prefix = "You are a helpful assistant. Answer the user’s question clearly and concisely."
     model_id = os.environ.get("HF_CHAT_MODEL", "HuggingFaceTB/SmolLM3-3B:hf-inference")
+    fallback_model = "HuggingFaceTB/SmolLM3-3B:hf-inference"
     try:
         resp = requests.post(
             "https://router.huggingface.co/v1/chat/completions",
@@ -176,12 +172,54 @@ def chat():
                 "max_tokens": 300,
                 "temperature": 0.7,
             },
-            timeout=20,
+            timeout=30,
         )
     except Exception as e:
         return jsonify({"error": "Chat service unreachable", "detail": str(e)}), 502
 
     if resp.status_code >= 400:
+        try:
+            data_err = resp.json()
+        except:
+            data_err = {}
+        if model_id != fallback_model:
+            try:
+                resp2 = requests.post(
+                    "https://router.huggingface.co/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": fallback_model,
+                        "messages": [
+                            {"role": "system", "content": system_prefix},
+                            {"role": "user", "content": user_message},
+                        ],
+                        "max_tokens": 300,
+                        "temperature": 0.7,
+                    },
+                    timeout=30,
+                )
+            except Exception as e2:
+                return jsonify({"error": "Chat service unreachable", "detail": str(e2)}), 502
+            if resp2.status_code >= 400:
+                return jsonify({"error": "Chat service failed", "detail": resp2.text}), 502
+            try:
+                data = resp2.json()
+                content = (
+                    data.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                )
+            except Exception:
+                return jsonify({"error": "Invalid response from chat service"}), 502
+            if not content:
+                content = "No answer available."
+            content = re.sub(r"<think>[\\s\\S]*?</think>", "", content, flags=re.IGNORECASE)
+            content = content.strip()
+            return jsonify({"reply": content})
         return jsonify({"error": "Chat service failed", "detail": resp.text}), 502
 
     try:
@@ -195,7 +233,9 @@ def chat():
         return jsonify({"error": "Invalid response from chat service"}), 502
 
     if not content:
-        content = "I can only answer science and health questions. Please try a related topic."
+        content = "No answer available."
+    content = re.sub(r"<think>[\\s\\S]*?</think>", "", content, flags=re.IGNORECASE)
+    content = content.strip()
 
     return jsonify({"reply": content})
 @app.route('/data')
