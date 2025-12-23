@@ -12,15 +12,20 @@
     <!-- Global Ripple Background -->
     <div id="ripple-container"></div>
 
-    <nav class="navbar navbar-dark bg-primary mb-4">
-        <div class="container">
+    <nav class="navbar navbar-dark bg-primary navbar-expand-md mb-4">
+        <div class="container-fluid">
             <a class="navbar-brand" href="{{ url_for('home') }}">Aqua Track: Water Quality Monitoring System</a>
-            <div class="d-flex gap-2">
-                <a class="btn {{ 'btn-light' if request.endpoint == 'dashboard' else 'btn-outline-light' }}" href="{{ url_for('dashboard') }}">Dashboard</a>
-                <a class="btn {{ 'btn-light' if request.endpoint == 'home' else 'btn-outline-light' }}" href="{{ url_for('home') }}">Calculator</a>
-                <a class="btn {{ 'btn-light' if request.endpoint == 'map_page' else 'btn-outline-light' }}" href="{{ url_for('map_page') }}">Map</a>
-                <a class="btn {{ 'btn-light' if request.endpoint == 'data_page' else 'btn-outline-light' }}" href="{{ url_for('data_page') }}">Database</a>
-                <a class="btn {{ 'btn-light' if request.endpoint == 'chatbot_page' else 'btn-outline-light' }}" href="{{ url_for('chatbot_page') }}">AI Chatbot</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" aria-controls="mainNavbar" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="mainNavbar">
+                <div class="ms-auto d-flex flex-column flex-md-row gap-2 mt-3 mt-md-0">
+                    <a class="btn {{ 'btn-light' if request.endpoint == 'dashboard' else 'btn-outline-light' }}" href="{{ url_for('dashboard') }}">Dashboard</a>
+                    <a class="btn {{ 'btn-light' if request.endpoint == 'home' else 'btn-outline-light' }}" href="{{ url_for('home') }}">Calculator</a>
+                    <a class="btn {{ 'btn-light' if request.endpoint == 'map_page' else 'btn-outline-light' }}" href="{{ url_for('map_page') }}">Map</a>
+                    <a class="btn {{ 'btn-light' if request.endpoint == 'data_page' else 'btn-outline-light' }}" href="{{ url_for('data_page') }}">Database</a>
+                    <a class="btn {{ 'btn-light' if request.endpoint == 'chatbot_page' else 'btn-outline-light' }}" href="{{ url_for('chatbot_page') }}">AI Chatbot</a>
+                </div>
             </div>
         </div>
     </nav>

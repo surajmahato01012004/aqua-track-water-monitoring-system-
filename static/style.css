@@ -45,6 +45,31 @@
     filter: saturate(120%) contrast(110%);
 }
 
+/* Responsive tweaks */
+@media (max-width: 576px) {
+  .chart-container { height: 160px !important; }
+}
+
+/* Map box responsive height */
+.map-box { height: 70vh; }
+@media (max-width: 576px) {
+  .map-box { height: 60vh; }
+}
+
+/* Prevent horizontal overflow and wrap long navbar brand text */
+body {
+  overflow-x: hidden;
+}
+.navbar .navbar-brand {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 576px) {
+  .navbar .navbar-brand {
+    font-size: 0.95rem;
+    max-width: calc(100vw - 4rem); /* leave space for the toggler */
+  }
+}
 /* Scrolling marquee text for hardware banner */
 .marquee,
 .marquee-slow {
