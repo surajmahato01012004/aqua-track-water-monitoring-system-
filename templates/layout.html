@@ -25,6 +25,7 @@
                     <a class="btn {{ 'btn-light' if request.endpoint == 'map_page' else 'btn-outline-light' }}" href="{{ url_for('map_page') }}">Map</a>
                     <a class="btn {{ 'btn-light' if request.endpoint == 'data_page' else 'btn-outline-light' }}" href="{{ url_for('data_page') }}">Database</a>
                     <a class="btn {{ 'btn-light' if request.endpoint == 'chatbot_page' else 'btn-outline-light' }}" href="{{ url_for('chatbot_page') }}">AI Chatbot</a>
+                    <a class="btn {{ 'btn-light' if request.endpoint == 'sensors_page' else 'btn-outline-light' }}" href="{{ url_for('sensors_page') }}">Sensor Data</a>
                 </div>
             </div>
         </div>

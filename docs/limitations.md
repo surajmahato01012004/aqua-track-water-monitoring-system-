@@ -11,6 +11,7 @@
 - WQI depends on user-entered values; inaccurate inputs lead to misleading scores.
 - Parameter standards and weights are simplified; domain calibration may be needed for local compliance.
 - Temperature effect uses absolute deviation from ideal; alternative formulations may be desired.
+- Sensors page computes WQI from IoT readings and assumes ideal observed values for missing parameters (DO=14.6 mg/L, TDS=0 mg/L, Nitrate=0 mg/L). This can bias results optimistic if actual DO/TDS/Nitrate differ.
 
 **Chatbot**
 - Model: `HuggingFaceTB/SmolLM3-3B:hf-inference` (app.py:237).
@@ -44,4 +45,4 @@
 - Stream responses in the UI, add retry/backoff, and better error messaging.
 - Integrate knowledge of app state via internal APIs, with access controls and logging.
 - Implement analytics for chatbot interactions to iteratively improve prompts and content.
-
+ - Extend IoT ingestion to include DO, TDS, and Nitrate sensors to eliminate assumptions on the Sensors page WQI.

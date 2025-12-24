@@ -7,17 +7,18 @@
 - Background: Canvas-based animated water effect (`static/js/global_ripple.js`, `static/style.css`).
 - Exports: `pandas` + `openpyxl` for CSV/Excel download (app.py:406–446).
 - Chatbot: Hugging Face Inference Router via HTTPS (app.py:221–352).
+- IoT: ESP32 posts readings to `/api/iot`; Sensors page polls latest and computes WQI.
 
 **Key Modules**
 - Data models:
   - `Location` (app.py:79–85) — coordinates with optional name.
   - `WaterSample` (app.py:87–98) — pH, DO, TDS, turbidity, nitrate, temperature, WQI.
-  - `IoTReading` (app.py:100–105) — prototype sensor table.
+  - `IoTReading` (app.py:100–105) — sensor table for latest readings (temperature, pH, turbidity).
 - WQI logic:
   - `calculate_wqi(data)` (app.py:117–173) — dynamic weights from `STANDARD` values, temperature handled as absolute deviation from ideal.
   - `get_status(wqi)` (app.py:176–188) — standard 5-tier classification and color mapping.
 - UI pages:
-  - `index.html`, `map.html`, `data.html`, `dashboard.html`, `chatbot.html` extend `layout.html`.
+  - `index.html`, `map.html`, `data.html`, `dashboard.html`, `chatbot.html`, `sensors.html` extend `layout.html`.
 
 **Chatbot**
 - Endpoint: `POST /chat` (app.py:221–352).
@@ -64,6 +65,6 @@
 
 **Performance Notes**
 - Server calculates WQI on-demand if missing; latest sample per location is used.
+- IoT endpoint returns a minimal JSON with only the latest reading to reduce payload and complexity.
 - Canvas background animation is lightweight and capped to several sine layers.
 - Chatbot enforces a minimum delay between sends to avoid spamming backend.
-

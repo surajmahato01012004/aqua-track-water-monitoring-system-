@@ -13,6 +13,98 @@ const TIMEOUT_MS = 30000;
 // Load history on startup
 window.addEventListener('DOMContentLoaded', loadHistory);
 
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeUrl(url) {
+  try {
+    const u = new URL(url);
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? u.toString() : '#';
+  } catch {
+    return '#';
+  }
+}
+
+function renderAssistant(text) {
+  let original = text || '';
+  original = original.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  original = original.replace(/Thinking Process:[\s\S]*?(?=\n\n|$)/gi, '');
+
+  const codeBlocks = [];
+  let withoutBlocks = original.replace(/```([\s\S]*?)```/g, (_, code) => {
+    const escaped = escapeHtml(code);
+    const token = `@@CODE_BLOCK_${codeBlocks.length}@@`;
+    codeBlocks.push(`<pre><code>${escaped}</code></pre>`);
+    return token;
+  });
+
+  let t = escapeHtml(withoutBlocks);
+
+  t = t.replace(/`([^`]+?)`/g, (_, c) => `<code>${c}</code>`);
+
+  t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => {
+    const safe = sanitizeUrl(url);
+    return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+  });
+
+  t = t.replace(/(https?:\/\/[^\s<]+)/g, (m) => {
+    const safe = sanitizeUrl(m);
+    return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${m}</a>`;
+  });
+
+  t = t.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em>$1</em>');
+  t = t.replace(/__([^_]+?)__/g, '<strong>$1</strong>');
+  t = t.replace(/_(?!_)([^_]+?)_(?!_)/g, '<em>$1</em>');
+  t = t.replace(/~~([^~]+?)~~/g, '<del>$1</del>');
+
+  t = t.replace(/^######\s+(.*)$/gm, '<h6>$1</h6>');
+  t = t.replace(/^#####\s+(.*)$/gm, '<h5>$1</h5>');
+  t = t.replace(/^####\s+(.*)$/gm, '<h4>$1</h4>');
+  t = t.replace(/^###\s+(.*)$/gm, '<h3>$1</h3>');
+  t = t.replace(/^##\s+(.*)$/gm, '<h2>$1</h2>');
+  t = t.replace(/^#\s+(.*)$/gm, '<h1>$1</h1>');
+
+  const lines = t.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (/^\s*-\s+/.test(lines[i])) {
+      const items = [];
+      while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*-\s+/, ''));
+        i++;
+      }
+      out.push('<ul>' + items.map(li => `<li>${li}</li>`).join('') + '</ul>');
+      continue;
+    }
+    if (/^\s*\d+\.\s+/.test(lines[i])) {
+      const items = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*\d+\.\s+/, ''));
+        i++;
+      }
+      out.push('<ol>' + items.map(li => `<li>${li}</li>`).join('') + '</ol>');
+      continue;
+    }
+    out.push(lines[i]);
+    i++;
+  }
+  t = out.join('\n');
+
+  codeBlocks.forEach((html, idx) => {
+    t = t.replace(new RegExp(`@@CODE_BLOCK_${idx}@@`, 'g'), html);
+  });
+
+  return t.trim();
+}
+
 function normalize(text) {
   return text.trim().toLowerCase();
 }
@@ -20,7 +112,7 @@ function normalize(text) {
 function loadHistory() {
   const history = JSON.parse(localStorage.getItem('chatHistory') || '[]');
   history.forEach(msg => {
-    appendMessage(msg.role, msg.text, false); // Don't save again
+    appendMessage(msg.role, msg.text, false);
   });
 }
 
@@ -38,7 +130,11 @@ function clearHistory() {
 function appendMessage(role, text, save = true) {
   const wrapper = document.createElement('div');
   wrapper.className = role === 'user' ? 'msg msg-user' : 'msg msg-assistant';
-  wrapper.textContent = text;
+  if (role === 'assistant') {
+    wrapper.innerHTML = renderAssistant(text);
+  } else {
+    wrapper.textContent = text;
+  }
   chatWindow.appendChild(wrapper);
   chatWindow.scrollTop = chatWindow.scrollHeight;
   if (save) {
@@ -96,15 +192,10 @@ async function sendMessage() {
     } else {
       const data = await resp.json();
       let reply = data.reply || data.error || 'No response';
-      // Clean up response if backend didn't catch it
-    reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '');
-    reply = reply.replace(/Thinking Process:[\s\S]*?(?=\n\n|$)/gi, '');
-
-    // Remove all single or double asterisks as requested
-    reply = reply.replace(/\*+/g, '');
-    
-    reply = reply.trim();
-    appendMessage('assistant', reply);
+      reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '');
+      reply = reply.replace(/Thinking Process:[\s\S]*?(?=\n\n|$)/gi, '');
+      reply = reply.trim();
+      appendMessage('assistant', reply);
       cache.set(key, reply);
     }
   } catch (err) {

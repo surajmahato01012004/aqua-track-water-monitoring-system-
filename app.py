@@ -51,6 +51,26 @@ with app.app_context():
                     conn.execute(text("ALTER TABLE water_samples ADD COLUMN temperature FLOAT"))
                     conn.commit()
                 print("Migration successful.")
+        # Migration for IoT readings: add 'ph' and 'turbidity_ntu' if missing
+        if inspector.has_table("iot_readings"):
+            iot_columns = [col['name'] for col in inspector.get_columns('iot_readings')]
+            with db.engine.connect() as conn:
+                if 'ph' not in iot_columns:
+                    try:
+                        print("Migrating: Adding 'ph' column to iot_readings table...")
+                        conn.execute(text("ALTER TABLE iot_readings ADD COLUMN ph FLOAT"))
+                        conn.commit()
+                        print("Migration successful.")
+                    except Exception as e:
+                        print(f"Migration warning (ph): {e}")
+                if 'turbidity_ntu' not in iot_columns:
+                    try:
+                        print("Migrating: Adding 'turbidity_ntu' column to iot_readings table...")
+                        conn.execute(text("ALTER TABLE iot_readings ADD COLUMN turbidity_ntu FLOAT"))
+                        conn.commit()
+                        print("Migration successful.")
+                    except Exception as e:
+                        print(f"Migration warning (turbidity_ntu): {e}")
     except Exception as e:
         print(f"Error creating/migrating tables: {e}")
 iot_lock = threading.Lock()
@@ -102,6 +122,8 @@ class IoTReading(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     temperature_c = db.Column(db.Float, nullable=False)
     turbidity_percent = db.Column(db.Float, nullable=False)
+    ph = db.Column(db.Float, nullable=True)
+    turbidity_ntu = db.Column(db.Float, nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 # --- Core WQI Function ---
@@ -577,28 +599,64 @@ def ingest_iot():
     if request.method == 'GET':
         latest = (IoTReading.query
                   .order_by(IoTReading.timestamp.desc())
-                  .limit(20)
-                  .all())
-        return jsonify({
-            "message": "Send POST with JSON {temperature_c, turbidity_percent} to store readings.",
-            "count": len(latest),
-            "latest": [
-                {
-                    "id": r.id,
-                    "temperature_c": r.temperature_c,
-                    "turbidity_percent": r.turbidity_percent,
-                    "timestamp": r.timestamp.isoformat()
-                } for r in latest
-            ]
-        })
+                  .first())
+        if not latest:
+            return jsonify({"error": "No data"}), 404
+        payload = {}
+        if latest.temperature_c is not None:
+            payload["temperature_c"] = round(float(latest.temperature_c), 2)
+        if latest.ph is not None:
+            payload["ph"] = round(float(latest.ph), 2)
+        turb_val = latest.turbidity_ntu if latest.turbidity_ntu is not None else latest.turbidity_percent
+        if turb_val is not None:
+            payload["turbidity"] = round(float(turb_val), 2)
+        payload["timestamp"] = latest.timestamp.isoformat()
+        return jsonify(payload)
     payload = request.get_json(silent=True) or {}
+    # Parse temperature
     try:
         temperature_c = float(payload.get("temperature_c"))
-        turbidity_percent = float(payload.get("turbidity_percent"))
     except (TypeError, ValueError):
-        return jsonify({"error": "Invalid payload"}), 400
+        return jsonify({"error": "Missing or invalid 'temperature_c'"}), 400
+    # Parse pH (optional)
+    ph_val = None
+    if payload.get("ph") is not None:
+        try:
+            ph_val = float(payload.get("ph"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid 'ph'"}), 400
+    # Parse turbidity from any of the keys
+    turbidity_ntu_val = None
+    turbidity_percent_val = None
+    if payload.get("turbidity") is not None:
+        try:
+            turbidity_ntu_val = float(payload.get("turbidity"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid 'turbidity'"}), 400
+    elif payload.get("turbidity_ntu") is not None:
+        try:
+            turbidity_ntu_val = float(payload.get("turbidity_ntu"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid 'turbidity_ntu'"}), 400
+    if payload.get("turbidity_percent") is not None:
+        try:
+            turbidity_percent_val = float(payload.get("turbidity_percent"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid 'turbidity_percent'"}), 400
+    # Require some turbidity value
+    if turbidity_ntu_val is None and turbidity_percent_val is None:
+        return jsonify({"error": "Provide 'turbidity' (or 'turbidity_ntu') or 'turbidity_percent'"}), 400
+    # If percent missing, mirror from NTU to keep non-null constraint
+    if turbidity_percent_val is None and turbidity_ntu_val is not None:
+        turbidity_percent_val = turbidity_ntu_val
     ts = datetime.utcnow()
-    rec = IoTReading(temperature_c=temperature_c, turbidity_percent=turbidity_percent, timestamp=ts)
+    rec = IoTReading(
+        temperature_c=temperature_c,
+        turbidity_percent=turbidity_percent_val,
+        ph=ph_val,
+        turbidity_ntu=turbidity_ntu_val,
+        timestamp=ts
+    )
     db.session.add(rec)
     db.session.commit()
     csv_path = os.path.join(DATA_DIR, "iot.csv")
@@ -607,9 +665,13 @@ def ingest_iot():
         with open(csv_path, "a", newline="") as f:
             writer = csv.writer(f)
             if write_header:
-                writer.writerow(["id", "temperature_c", "turbidity_percent", "timestamp"])
-            writer.writerow([rec.id, temperature_c, turbidity_percent, ts.isoformat()])
+                writer.writerow(["id", "temperature_c", "ph", "turbidity_percent", "turbidity_ntu", "timestamp"])
+            writer.writerow([rec.id, temperature_c, ph_val, turbidity_percent_val, turbidity_ntu_val, ts.isoformat()])
     return jsonify({"status": "ok", "id": rec.id, "timestamp": ts.isoformat()})
+
+@app.route('/sensors')
+def sensors_page():
+    return render_template("sensors.html")
 
 @app.route('/api/wqi', methods=['GET'])
 def api_wqi():
