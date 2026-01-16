@@ -18,6 +18,15 @@ This document lists all UI pages and API endpoints exposed by the application, i
 - `GET /chatbot.html` — AI chatbot UI  
   - Renders `templates/chatbot.html`  
   - Code: `app.py:217–219`
+- `GET /login` — Login page  
+  - Renders `templates/login.html`  
+  - Code: `app.py:231–233`
+- `GET /signup` — Signup page  
+  - Renders `templates/signup.html`  
+  - Code: `app.py:235–237`
+- `GET /user-dashboard` — User dashboard  
+  - Renders `templates/user_dashboard.html`  
+  - Code: `app.py:239–253`
 
 ## APIs
 - `POST /calculate` — Compute WQI for provided parameters  
@@ -95,3 +104,4 @@ This document lists all UI pages and API endpoints exposed by the application, i
   - Code: `app.py:41–55`
 - WQI calculation skips missing parameters and applies dynamic weights  
   - Code: `app.py:117–173`
+- Client-side auth protects selected pages; uses localStorage and SHA-256 hashing (`static/auth.js`).

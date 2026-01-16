@@ -12,7 +12,10 @@
             <div class="col-lg-8">
                 <div class="card shadow-sm">
                     <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Hydra</h5>
+                        <h5 class="mb-0">
+                            <img src="{{ url_for('static', filename='img/chatbot-icon.jpg') }}" alt="Chatbot icon" class="chatbot-icon">
+                            Hydra
+                        </h5>
                         <button id="clear-btn" class="btn btn-sm btn-outline-danger">Clear Chat</button>
                     </div>
                     <div class="card-body">
@@ -31,7 +34,7 @@
 
 {% block extra_js %}
     <script>
-        window.CHAT_BACKEND_URL = "https://wqi-hxhz.onrender.com/chat";
+        window.CHAT_BACKEND_URL = "/chat";
     </script>
     <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
 {% endblock %}

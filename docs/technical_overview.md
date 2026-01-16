@@ -1,37 +1,39 @@
 # Technical Overview
 
 **Architecture**
-- Backend: `Flask` app (`app.py`) serving HTML templates and JSON APIs.
-- ORM: `SQLAlchemy` with SQLite by default; optional Postgres via `DATABASE_URL` (app.py:26–37).
-- Frontend: Jinja2 templates with `Bootstrap 5`, `Chart.js`, Google Maps JS, and custom JS/CSS.
-- Background: Canvas-based animated water effect (`static/js/global_ripple.js`, `static/style.css`).
-- Exports: `pandas` + `openpyxl` for CSV/Excel download (app.py:406–446).
-- Chatbot: Hugging Face Inference Router via HTTPS (app.py:221–352).
+- Backend: Flask app (app.py) serving HTML templates and JSON APIs.
+- ORM: SQLAlchemy with SQLite by default; optional Postgres via `DATABASE_URL`.
+- Frontend: Jinja2 templates with Bootstrap 5, Chart.js, Google Maps JS, and custom JS/CSS.
+- Background: Canvas-based animated water effect (static/js/global_ripple.js, static/style.css).
+- Exports: pandas + openpyxl for CSV/Excel download.
+- Chatbot: Hugging Face Inference Router via HTTPS.
 - IoT: ESP32 posts readings to `/api/iot`; Sensors page polls latest and computes WQI.
+- Auth: Client-side localStorage with SHA-256 password hashing, pages at `/login`, `/signup`, `/user-dashboard`.
 
 **Key Modules**
 - Data models:
-  - `Location` (app.py:79–85) — coordinates with optional name.
-  - `WaterSample` (app.py:87–98) — pH, DO, TDS, turbidity, nitrate, temperature, WQI.
-  - `IoTReading` (app.py:100–105) — sensor table for latest readings (temperature, pH, turbidity).
+  - Location — coordinates with optional name.
+  - WaterSample — pH, DO, TDS, turbidity, nitrate, temperature, WQI.
+  - IoTReading — temperature, pH, turbidity with timestamps.
 - WQI logic:
-  - `calculate_wqi(data)` (app.py:117–173) — dynamic weights from `STANDARD` values, temperature handled as absolute deviation from ideal.
-  - `get_status(wqi)` (app.py:176–188) — standard 5-tier classification and color mapping.
+  - `calculate_wqi(data)` — dynamic weights from standards, temperature handled as absolute deviation from ideal.
+  - `get_status(wqi)` — standard 5-tier classification and color mapping.
 - UI pages:
-  - `index.html`, `map.html`, `data.html`, `dashboard.html`, `chatbot.html`, `sensors.html` extend `layout.html`.
+  - index.html, map.html, data.html, dashboard.html, chatbot.html, sensors.html extend layout.html.
+  - Auth pages: login.html, signup.html, user_dashboard.html.
 
 **Chatbot**
-- Endpoint: `POST /chat` (app.py:221–352).
-- Model: `HuggingFaceTB/SmolLM3-3B:hf-inference` by default (app.py:237), configurable via `HF_CHAT_MODEL`.
+- Endpoint: `POST /chat` (relative path).
+- Model: `HuggingFaceTB/SmolLM3-3B:hf-inference` by default, configurable via `HF_CHAT_MODEL`.
 - Why this model:
-  - Lightweight 3B parameter size → fast responses and low memory on HF Inference API.
-  - Good general-purpose Q&A with reasonable coherence at low cost.
-  - Inference hosted by Hugging Face Router → simple integration using `requests`.
+  - Lightweight 3B parameter size for fast responses and low cost.
+  - General-purpose Q&A with balanced performance.
+  - Hosted on Hugging Face Router via HTTPS using requests.
 - Request config:
-  - `max_tokens=3000`, `temperature=0.7`, system prompt encouraging compact, complete answers.
+  - `max_tokens=3000`, `temperature=0.7`, compact and complete answers.
 - Output cleaning:
-  - Server: `clean_response()` removes `<think>` sections and “Thinking Process:” (app.py:107–115).
-  - Client: `static/chatbot.js` strips chain-of-thought and asterisks, enforces send delay.
+  - Server: `clean_response()` removes chain-of-thought sections.
+  - Client: `static/chatbot.js` strips chain-of-thought formatting and asterisks; enforces send delay.
 
 **Tech Stack Rationale**
 - Flask + Jinja2:
@@ -55,16 +57,16 @@
 
 **Configuration**
 - Environment variables:
-  - `GOOGLE_MAPS_API_KEY` for `templates/map.html`.
+  - `GOOGLE_MAPS_API_KEY` for map.
   - `HUGGING_FACE_API_TOKEN` for `/chat`.
   - `HF_CHAT_MODEL` optional override of the default model.
   - `DATABASE_URL` optional Postgres URI.
 - App start:
-  - `python app.py` (dev with debug mode).
-  - `gunicorn app:app` (prod via `Procfile`).
+  - `python app.py` (dev).
+  - `gunicorn app:app` (prod via Procfile).
 
 **Performance Notes**
-- Server calculates WQI on-demand if missing; latest sample per location is used.
-- IoT endpoint returns a minimal JSON with only the latest reading to reduce payload and complexity.
+- Server calculates WQI on-demand; latest sample per location is used.
+- IoT endpoint returns minimal JSON with only the latest reading.
 - Canvas background animation is lightweight and capped to several sine layers.
 - Chatbot enforces a minimum delay between sends to avoid spamming backend.

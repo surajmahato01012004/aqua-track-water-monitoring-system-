@@ -6,7 +6,7 @@
 
 **Dashboard (`templates/dashboard.html`)**
 - Entry page linking to Calculator, Map, Database, and Chatbot.
-- Includes a scrolling hardware integration banner styled via `.marquee` CSS.
+- Includes a live sensor data card (polls `/api/iot`) and a public-awareness slogan card.
 
 **Calculator (`templates/index.html`)**
 - Lets users input parameters (`ph`, `do`, `turbidity`, `tds`, `nitrate`, `temperature`).
@@ -34,9 +34,14 @@
 - Hides content until data arrives.
 
 **Chatbot (`templates/chatbot.html`)**
-- Client JS: `static/chatbot.js` sends user messages to `window.CHAT_BACKEND_URL` or `/chat`.
+- Client JS: `static/chatbot.js` sends user messages to `/chat` (relative backend).
 - Server endpoint: `POST /chat` routes requests to Hugging Face Router (app.py:221–352).
 - Cleans responses on both client and server sides and enforces send delay on the client.
+
+**Auth (`templates/login.html`, `templates/signup.html`, `templates/user_dashboard.html`)**
+- Client-side authentication with localStorage and SHA-256 password hashing (`static/auth.js`).
+- Login and signup forms are validated; successful auth redirects to User Dashboard.
+- Protected pages redirect unauthenticated users to `/login`.
 
 **Relationships**
 - `calculate_wqi` (app.py:117–173) and `get_status` (app.py:176–188) power UI pages (Calculator, Data, Map).

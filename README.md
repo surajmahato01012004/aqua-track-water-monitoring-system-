@@ -6,9 +6,10 @@ A full-stack Flask application to compute, visualize, and manage Water Quality I
 - WQI calculator with chart and status badges on `/` (templates/index.html).
 - Location and sample management with CRUD on `/data` (templates/data.html).
 - Interactive WQI map using Google Maps on `/map` (templates/map.html).
-- Dashboard landing page with quick links and a scrolling hardware banner on `/dashboard` (templates/dashboard.html).
-- AI chatbot page (templates/chatbot.html) with a server endpoint at `/chat` and optional external backend.
+- Dashboard with quick links, live sensor card, and public-awareness slogan on `/dashboard` (templates/dashboard.html).
+- AI chatbot page (templates/chatbot.html) with server endpoint at `/chat`.
 - Sensors page showing latest ESP32 readings and computed WQI on `/sensors` (templates/sensors.html).
+- Login, Signup, and User Dashboard pages with client-side auth on `/login`, `/signup`, `/user-dashboard`.
 - CSV/Excel export including temperature via `/download_excel`.
 - Auto-migration that adds a `temperature` column for backward compatibility.
 - Consistent 5-tier WQI scale and colors across UI and APIs.
@@ -26,7 +27,9 @@ A full-stack Flask application to compute, visualize, and manage Water Quality I
   - `technical_overview.md` — Architecture, tech stack choices, chatbot details.
   - `page_functions.md` — Each page’s functions and relationships.
   - `limitations.md` — System and chatbot caveats with improvement plan.
-  - `interview_qna.md` — 50 deep questions and answers.
+  - `endpoints.md` — API and page endpoints.
+  - `workflow.md` — Detailed build workflow and decisions.
+  - `architecture.md` — Architectural structure and data flow.
  
 **Detailed Structure**
 - Pages
@@ -73,11 +76,10 @@ A full-stack Flask application to compute, visualize, and manage Water Quality I
   - `http://127.0.0.1:5000/chatbot.html` chatbot
 
 **Data Model**
-- `Location` (app.py:79–85): `id`, `latitude`, `longitude`, `name`, `samples` relationship.
-- `WaterSample` (app.py:87–98): `id`, `location_id`, `ph`, `do`, `tds`, `turbidity`, `nitrate`, `temperature`, `wqi`, `timestamp`.
-- `IoTReading` (app.py:100–105): prototype table for sensor ingestion.
-- Fields include `temperature_c`, `ph`, `turbidity_percent`, `turbidity_ntu`, `timestamp` with startup migration adding missing columns (app.py:41–55).
-- Auto-migration adds `temperature` if missing (app.py:41–55).
+- `Location`: `id`, `latitude`, `longitude`, `name`, `samples` relationship.
+- `WaterSample`: `id`, `location_id`, `ph`, `do`, `tds`, `turbidity`, `nitrate`, `temperature`, `wqi`, `timestamp`.
+- `IoTReading`: `temperature_c`, `ph`, `turbidity_percent`, `turbidity_ntu`, `timestamp`.
+- Auto-migration adds `temperature` to `water_samples` if missing.
  
 **Database Details**
 - Default: SQLite stored at `data/wqi.db`
@@ -106,21 +108,22 @@ A full-stack Flask application to compute, visualize, and manage Water Quality I
 
 **APIs and Pages**
 - Pages:
-  - `/` calculator (app.py:200–206)
-  - `/dashboard` dashboard (app.py:208–210)
-  - `/map` map (app.py:212–215)
-  - `/data` database view (app.py:356–405)
-  - `/chatbot.html` chatbot view (app.py:217–219)
-  - `/sensors` latest IoT readings with WQI (app.py:615–617)
+  - `/` calculator
+  - `/dashboard` dashboard
+  - `/map` map
+  - `/data` database view
+  - `/chatbot.html` chatbot view
+  - `/sensors` latest IoT readings with WQI
+  - `/login`, `/signup`, `/user-dashboard` auth pages (client-side)
 - APIs:
-  - `POST /calculate` returns `wqi`, `status`, `color` (app.py:445–452).
-  - `GET /api/locations` latest WQI per location (app.py:454–495).
-  - `GET /api/wqi?lat&lng` nearest location WQI (app.py:613–642).
-  - `POST /api/iot` ingest IoT readings JSON (`temperature_c` required; optional `ph`, `turbidity`/`turbidity_ntu` or `turbidity_percent`) (app.py:594–612).
-  - `GET /api/iot` latest IoT reading in clean JSON with rounded fields; 404 when empty (app.py:592–600).
-  - CRUD: `/data/location`, `/data/location/<id>/delete`, `/data/sample`, `/data/sample/<id>/update` (app.py:497–566).
-  - Export: `GET /download_excel` (app.py:406–446).
-  - Chat: `POST /chat` using Hugging Face router (app.py:221–352).
+  - `POST /calculate` returns `wqi`, `status`, `color`.
+  - `GET /api/locations` latest WQI per location.
+  - `GET /api/wqi?lat&lng` nearest location WQI.
+  - `POST /api/iot` ingest IoT readings JSON (`temperature_c` required; optional `ph`, `turbidity_ntu`/`turbidity_percent`).
+  - `GET /api/iot` latest IoT reading; 404 when empty.
+  - CRUD: `/data/location`, `/data/location/<id>/delete`, `/data/sample`, `/data/sample/<id>/update`.
+  - Export: `GET /download_excel`.
+  - Chat: `POST /chat` using Hugging Face Router.
 
 **Deployment**
 - Local SQLite for development; prefer managed Postgres in production.
@@ -143,7 +146,7 @@ A full-stack Flask application to compute, visualize, and manage Water Quality I
   - Verify `/download_excel` in Render; large exports may need streaming
 
 **Further Reading**
-- See `docs/technical_overview.md`, `docs/page_functions.md`, `docs/limitations.md`, `docs/endpoints.md`
+- See `docs/technical_overview.md`, `docs/page_functions.md`, `docs/limitations.md`, `docs/endpoints.md`, `docs/workflow.md`, `docs/architecture.md`
 
 **Sensor WQI**
 - The Sensors page computes WQI from latest IoT values.
