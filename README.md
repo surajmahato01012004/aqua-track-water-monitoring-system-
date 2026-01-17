@@ -21,9 +21,16 @@ A full-stack Flask application to compute, visualize, and manage Water Quality I
 - `static/` — Frontend assets (`script.js`, `map.js`, `chatbot.js`, CSS, water background animation).
 - `static/sensors.js` — IoT latest-readings polling and WQI display.
 - `data/wqi.db` — SQLite database (auto-created locally).
+- `data/static_wb.json` — Static West Bengal reference data (seeded into DB).
 - `requirements.txt` — Python dependencies.
 - `Procfile` — Production entry (`gunicorn app:app`).
-
+- `docs/` — Additional documentation:
+  - `technical_overview.md` — Architecture, tech stack choices, chatbot details.
+  - `page_functions.md` — Each page’s functions and relationships.
+  - `limitations.md` — System and chatbot caveats with improvement plan.
+  - `endpoints.md` — API and page endpoints.
+  - `workflow.md` — Detailed build workflow and decisions.
+  - `architecture.md` — Architectural structure and data flow.
  
 **Project Tree**
 
@@ -54,7 +61,6 @@ root
 │  ├─ style.css
 │  └─ js
 │     └─ global_ripple.js
-
 ```
 
 **Detailed Structure**
@@ -74,8 +80,7 @@ root
   - `static/style.css` site stylesheet and contrast, background
 - Data
   - `data/wqi.db` local SQLite file
-- Docs
-  - `docs/*.md` documentation set
+  - `data/static_wb.json` seed JSON for reference locations
 
 **Setup**
 - Install: `pip install -r requirements.txt`
@@ -170,9 +175,6 @@ root
 - Notes:
   - Use Postgres to avoid ephemeral filesystem issues
   - Verify `/download_excel` in Render; large exports may need streaming
-
-**Further Reading**
-- See `docs/technical_overview.md`, `docs/page_functions.md`, `docs/limitations.md`, `docs/endpoints.md`, `docs/workflow.md`, `docs/architecture.md`
 
 **Sensor WQI**
 - The Sensors page computes WQI from latest IoT values.

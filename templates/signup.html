@@ -26,7 +26,7 @@
 
             <p class="text-center mt-3 mb-0">
                 Already have an account?
-                <a href="{{ url_for('login_page') }}">Log in</a>
+                <a href="{{ url_for('login_page') }}{% if request.args.get('next') %}?next={{ request.args.get('next') }}{% endif %}">Log in</a>
             </p>
         </div>
     </div>

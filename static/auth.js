@@ -60,16 +60,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (protectedPaths.includes(path)) {
         if (!loggedInEmail || !users[loggedInEmail]) {
-            window.location.href = "/login";
+            const next = encodeURIComponent(path);
+            window.location.href = "/login?next=" + next;
             return;
         }
     }
 
     if (loginForm) {
         if (loggedInEmail && users[loggedInEmail]) {
-            window.location.href = "/user-dashboard";
+            const params = new URLSearchParams(window.location.search);
+            const nextParam = params.get("next");
+            window.location.href = nextParam || "/user-dashboard";
             return;
         }
+        const params = new URLSearchParams(window.location.search);
+        const nextParam = params.get("next");
         loginForm.addEventListener("submit", async function (event) {
             event.preventDefault();
             showMessage(loginError, "");
@@ -99,15 +104,19 @@ document.addEventListener("DOMContentLoaded", function () {
                 return;
             }
             localStorage.setItem(LOGGED_IN_KEY, email);
-            window.location.href = "/user-dashboard";
+            window.location.href = nextParam || "/user-dashboard";
         });
     }
 
     if (signupForm) {
         if (loggedInEmail && users[loggedInEmail]) {
-            window.location.href = "/user-dashboard";
+            const params = new URLSearchParams(window.location.search);
+            const nextParam = params.get("next");
+            window.location.href = nextParam || "/user-dashboard";
             return;
         }
+        const params = new URLSearchParams(window.location.search);
+        const nextParam = params.get("next");
         signupForm.addEventListener("submit", async function (event) {
             event.preventDefault();
             showMessage(signupError, "");
@@ -138,7 +147,7 @@ document.addEventListener("DOMContentLoaded", function () {
             localStorage.setItem(LOGGED_IN_KEY, email);
             showMessage(signupSuccess, "Account created successfully. Redirecting to dashboard...");
             setTimeout(function () {
-                window.location.href = "/user-dashboard";
+                window.location.href = nextParam || "/user-dashboard";
             }, 800);
         });
     }
