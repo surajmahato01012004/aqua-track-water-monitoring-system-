@@ -23,18 +23,12 @@ A full-stack Flask application to compute, visualize, and manage Water Quality I
 - `data/wqi.db` — SQLite database (auto-created locally).
 - `requirements.txt` — Python dependencies.
 - `Procfile` — Production entry (`gunicorn app:app`).
-- `docs/` — Additional documentation:
-  - `technical_overview.md` — Architecture, tech stack choices, chatbot details.
-  - `page_functions.md` — Each page’s functions and relationships.
-  - `limitations.md` — System and chatbot caveats with improvement plan.
-  - `endpoints.md` — API and page endpoints.
-  - `workflow.md` — Detailed build workflow and decisions.
-  - `architecture.md` — Architectural structure and data flow.
+
  
 **Project Tree**
 
 ```
-
+root
 ├─ app.py
 ├─ requirements.txt
 ├─ Procfile
@@ -60,15 +54,7 @@ A full-stack Flask application to compute, visualize, and manage Water Quality I
 │  ├─ style.css
 │  └─ js
 │     └─ global_ripple.js
-└─ docs
-   ├─ endpoints.md
-   ├─ architecture.md
-   ├─ technical_overview.md
-   ├─ page_functions.md
-   ├─ limitations.md
-   ├─ workflow.md
-   ├─ judges_qna.md
-   └─ walkthrough_script.md
+
 ```
 
 **Detailed Structure**
