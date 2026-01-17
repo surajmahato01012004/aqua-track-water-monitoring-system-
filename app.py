@@ -11,6 +11,7 @@ import re
 import pandas as pd
 import io
 from flask import send_file
+import json
 
 # --- Application Setup ---
 app = Flask(__name__)
@@ -38,62 +39,38 @@ if external_db_url:
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
-with app.app_context():
-    try:
-        db.create_all()
-        # Migration check for 'temperature' column in 'water_samples'
-        inspector = inspect(db.engine)
-        if inspector.has_table("water_samples"):
-            columns = [col['name'] for col in inspector.get_columns('water_samples')]
-            if 'temperature' not in columns:
-                print("Migrating: Adding 'temperature' column to water_samples table...")
-                with db.engine.connect() as conn:
-                    conn.execute(text("ALTER TABLE water_samples ADD COLUMN temperature FLOAT"))
-                    conn.commit()
-                print("Migration successful.")
-        # Migration for IoT readings: add 'ph' and 'turbidity_ntu' if missing
-        if inspector.has_table("iot_readings"):
-            iot_columns = [col['name'] for col in inspector.get_columns('iot_readings')]
-            with db.engine.connect() as conn:
-                if 'ph' not in iot_columns:
-                    try:
-                        print("Migrating: Adding 'ph' column to iot_readings table...")
-                        conn.execute(text("ALTER TABLE iot_readings ADD COLUMN ph FLOAT"))
-                        conn.commit()
-                        print("Migration successful.")
-                    except Exception as e:
-                        print(f"Migration warning (ph): {e}")
-                if 'turbidity_ntu' not in iot_columns:
-                    try:
-                        print("Migrating: Adding 'turbidity_ntu' column to iot_readings table...")
-                        conn.execute(text("ALTER TABLE iot_readings ADD COLUMN turbidity_ntu FLOAT"))
-                        conn.commit()
-                        print("Migration successful.")
-                    except Exception as e:
-                        print(f"Migration warning (turbidity_ntu): {e}")
-    except Exception as e:
-        print(f"Error creating/migrating tables: {e}")
 iot_lock = threading.Lock()
 
-# --- WQI Calculation Constants ---
-WEST_BENGAL_STATIC_DATA = [
-    {"name": "Ganga (Hooghly) River", "location": "Kolkata (Dakshineswar)", "latitude": 22.6531, "longitude": 88.3717, "wqi": 65, "status": "Poor", "category": "River / Drinking Source"},
-    {"name": "Damodar River", "location": "Durgapur", "latitude": 23.5204, "longitude": 87.3119, "wqi": 55, "status": "Poor", "category": "River / Industrial Area"},
-    {"name": "Teesta River", "location": "Jalpaiguri", "latitude": 26.5405, "longitude": 88.7193, "wqi": 35, "status": "Good", "category": "River"},
-    {"name": "Mahananda River", "location": "Siliguri", "latitude": 26.7075, "longitude": 88.4300, "wqi": 60, "status": "Poor", "category": "River / Urban Runoff"},
-    {"name": "Rupnarayan River", "location": "Kolaghat", "latitude": 22.4308, "longitude": 87.8700, "wqi": 45, "status": "Good", "category": "River"},
-    {"name": "Subarnarekha River", "location": "Jhargram", "latitude": 22.4500, "longitude": 86.9900, "wqi": 40, "status": "Good", "category": "River"},
-    {"name": "Jaldhaka River", "location": "Mathabhanga", "latitude": 26.3400, "longitude": 89.2100, "wqi": 30, "status": "Good", "category": "River"},
-    {"name": "Vidyadhari River", "location": "Haroa", "latitude": 22.6000, "longitude": 88.6800, "wqi": 80, "status": "Very Poor", "category": "River / Sewage"},
-    {"name": "Kangsabati River", "location": "Midnapore", "latitude": 22.4200, "longitude": 87.3200, "wqi": 42, "status": "Good", "category": "River / Irrigation"},
-    {"name": "Muriganga River", "location": "Kakdwip", "latitude": 21.8700, "longitude": 88.1800, "wqi": 50, "status": "Good", "category": "Estuary"},
-    # Kolkata Samples
-    {"name": "Hooghly River", "location": "Kolkata", "latitude": 22.5726, "longitude": 88.3639, "wqi": 62, "status": "Poor", "category": "River / Urban"},
-    {"name": "Rabindra Sarobar", "location": "Kolkata", "latitude": 22.5126, "longitude": 88.3498, "wqi": 45, "status": "Good", "category": "Lake / Recreational"},
-    {"name": "East Kolkata Wetlands", "location": "Kolkata", "latitude": 22.5500, "longitude": 88.4300, "wqi": 55, "status": "Poor", "category": "Wetland / Treatment"},
-    {"name": "Subhas Sarovar", "location": "Kolkata", "latitude": 22.5787, "longitude": 88.4003, "wqi": 40, "status": "Good", "category": "Lake / Recreational"},
-    {"name": "Salt Lake Water Body", "location": "Bidhannagar", "latitude": 22.5867, "longitude": 88.4173, "wqi": 48, "status": "Good", "category": "Lake / Urban"},
-]
+def seed_reference_locations():
+    try:
+        static_path = os.path.join(DATA_DIR, "static_wb.json")
+        if not os.path.exists(static_path):
+            return
+        with open(static_path, "r", encoding="utf-8") as f:
+            items = json.load(f) or []
+        created = 0
+        for item in items:
+            name = item.get("name")
+            location = item.get("location")
+            exists = ReferenceLocation.query.filter_by(name=name, location=location).first()
+            if exists:
+                continue
+            rec = ReferenceLocation(
+                name=name,
+                location=location,
+                latitude=float(item.get("latitude")),
+                longitude=float(item.get("longitude")),
+                wqi=float(item.get("wqi")),
+                status=item.get("status"),
+                category=item.get("category")
+            )
+            db.session.add(rec)
+            created += 1
+        if created:
+            db.session.commit()
+            print(f"Seeded {created} reference locations from static_wb.json")
+    except Exception as e:
+        print(f"Reference seed error: {e}")
 
 # --- ORM Models ---
 class Location(db.Model):
@@ -126,6 +103,52 @@ class IoTReading(db.Model):
     turbidity_ntu = db.Column(db.Float, nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
+class ReferenceLocation(db.Model):
+    __tablename__ = "reference_locations"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    location = db.Column(db.String(255), nullable=False)
+    latitude = db.Column(db.Float, nullable=False)
+    longitude = db.Column(db.Float, nullable=False)
+    wqi = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(64), nullable=False)
+    category = db.Column(db.String(255), nullable=True)
+
+with app.app_context():
+    try:
+        db.create_all()
+        inspector = inspect(db.engine)
+        if inspector.has_table("water_samples"):
+            columns = [col['name'] for col in inspector.get_columns('water_samples')]
+            if 'temperature' not in columns:
+                print("Migrating: Adding 'temperature' column to water_samples table...")
+                with db.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE water_samples ADD COLUMN temperature FLOAT"))
+                    conn.commit()
+                print("Migration successful.")
+        if inspector.has_table("iot_readings"):
+            iot_columns = [col['name'] for col in inspector.get_columns('iot_readings')]
+            with db.engine.connect() as conn:
+                if 'ph' not in iot_columns:
+                    try:
+                        print("Migrating: Adding 'ph' column to iot_readings table...")
+                        conn.execute(text("ALTER TABLE iot_readings ADD COLUMN ph FLOAT"))
+                        conn.commit()
+                        print("Migration successful.")
+                    except Exception as e:
+                        print(f"Migration warning (ph): {e}")
+                if 'turbidity_ntu' not in iot_columns:
+                    try:
+                        print("Migrating: Adding 'turbidity_ntu' column to iot_readings table...")
+                        conn.execute(text("ALTER TABLE iot_readings ADD COLUMN turbidity_ntu FLOAT"))
+                        conn.commit()
+                        print("Migration successful.")
+                    except Exception as e:
+                        print(f"Migration warning (turbidity_ntu): {e}")
+        seed_reference_locations()
+    except Exception as e:
+        print(f"Error creating/migrating tables: {e}")
+
 # --- Core WQI Function ---
 def clean_response(text):
     if not text:
@@ -137,65 +160,93 @@ def clean_response(text):
     return text.strip()
 
 def calculate_wqi(data):
+    """
+    Calculates the Water Quality Index (WQI) using the Weighted Arithmetic WQI method.
+
+    Parameters:
+    - data (dict): Observed values for water quality parameters.
+      Example: {"ph":7.8, "do":6.5, "turbidity":3.0, "tds":200, "nitrate":10, "temperature":28}
+
+    Returns:
+    - float: Water Quality Index (rounded to 2 decimals), or None if no valid data.
+    """
+
+    # 1) Ideal values (Vi); ideal = 0 for most parameters except pH & DO
     IDEAL = {
         "ph": 7.0,
         "do": 14.6,
         "turbidity": 0.0,
         "tds": 0.0,
         "nitrate": 0.0,
-        "temperature": 25.0
+        "temperature": 25.0,
     }
 
+    # 2) Standard (permissible) values (Vs) (e.g., based on BIS/WHO for drinking water)
     STANDARD = {
         "ph": 8.5,
         "do": 5.0,
         "turbidity": 5.0,
         "tds": 500.0,
         "nitrate": 45.0,
-        "temperature": 30.0
+        "temperature": 30.0,
     }
 
-    # Step 1: Calculate K
+    # 3) Proportionality constant K
     try:
-        K = 1 / sum(1 / s for s in STANDARD.values())
+        K = 1 / sum(1 / v for v in STANDARD.values())
     except ZeroDivisionError:
-        return 0
+        return None
 
     total_qw = 0.0
     total_w = 0.0
 
     for param in STANDARD:
-        # Check if param exists in data and is not None
-        if param not in data or data.get(param) is None:
+        if param not in data or data[param] is None:
             continue
 
         try:
-            observed = float(data[param])
-            ideal = IDEAL[param]
-            standard = STANDARD[param]
-            weight = K / standard  # dynamic weight
+            # Observed value
+            Vo = float(data[param])
+            Vi = IDEAL[param]
+            Vs = STANDARD[param]
 
-            # Step 2: Qi calculation
-            if param == "temperature":
-                qi = abs(observed - ideal) / (standard - ideal) * 100
+            # Unit weight
+            Wi = K / Vs
+
+            # Quality rating (Qi)
+            if param == "do":
+                # DO: higher is better up to ideal
+                Qi = (Vi - Vo) / (Vi - Vs) * 100
+            elif param in ["ph", "temperature"]:
+                # pH and temperature: deviation from ideal, both directions matter
+                Qi = abs(Vo - Vi) / (Vs - Vi) * 100
             else:
-                qi = (observed - ideal) / (standard - ideal) * 100
+                # Normal parameters: higher than ideal is worse
+                Qi = (Vo - Vi) / (Vs - Vi) * 100
 
-            qi = max(qi, 0)  # clamp negative Qi
+            Qi = max(0.0, Qi)
 
-            total_qw += qi * weight
-            total_w += weight
+            total_qw += Qi * Wi
+            total_w += Wi
 
         except (ValueError, TypeError, ZeroDivisionError):
             continue
 
     if total_w == 0:
-        return 0
+        return None
 
+    # 4) Final WQI value
     return round(total_qw / total_w, 2)
 
-# --- Status Function ---
+
 def get_status(wqi):
+    """
+    Returns a qualitative status for a given WQI.
+
+    - wqi: Water Quality Index (float)
+    Returns: (status_string, bootstrap_color)
+    """
+
     if wqi is None:
         return "No Data", "secondary"
     if wqi <= 25:
@@ -399,7 +450,8 @@ def data_page():
             "nitrate": sample.nitrate if sample else None,
             "temperature": sample.temperature if sample else None,
         })
-    return render_template("data.html", rows=rows, wb_data=WEST_BENGAL_STATIC_DATA)
+    ref_rows = ReferenceLocation.query.all()
+    return render_template("data.html", rows=rows, wb_data=ref_rows)
 
 @app.route('/download_excel')
 def download_excel():
@@ -430,22 +482,22 @@ def download_excel():
         }
         data_list.append(row)
     
-    # Static West Bengal Data
-    for item in WEST_BENGAL_STATIC_DATA:
+    # Static Reference Data
+    for item in ReferenceLocation.query.all():
         row = {
-            "Location Name": item["name"] + " - " + item["location"],
-            "Latitude": item["latitude"],
-            "Longitude": item["longitude"],
-            "WQI": item["wqi"],
-            "Status": item["status"],
+            "Location Name": item.name + " - " + item.location,
+            "Latitude": item.latitude,
+            "Longitude": item.longitude,
+            "WQI": item.wqi,
+            "Status": item.status,
             "pH": None,
             "DO (mg/L)": None,
             "TDS (mg/L)": None,
             "Turbidity (NTU)": None,
             "Nitrate (mg/L)": None,
-            "Temperature (C)": 25.0,
+            "Temperature (C)": None,
             "Timestamp": None,
-            "Type": "Static Reference (West Bengal)"
+            "Type": "Static Reference"
         }
         data_list.append(row)
 
@@ -516,23 +568,15 @@ def api_locations():
             "color": color
         })
     
-    # Static West Bengal locations
-    for item in WEST_BENGAL_STATIC_DATA:
-        # Determine color based on WQI value using the standard get_status function
-        # If static data has hardcoded status, we might need to adjust logic, but using get_status is safer if we have WQI
-        # However, WEST_BENGAL_STATIC_DATA has 'wqi' and 'status'.
-        # Let's trust 'wqi' to derive the color if possible, or map status explicitly.
-        # Given the request, let's map status to the new colors strictly.
-        # But wait, get_status does exactly what is needed based on WQI.
-        # Let's use get_status(item["wqi"]) to ensure consistency.
-        status, color = get_status(item["wqi"])
-
+    # Static Reference locations
+    for item in ReferenceLocation.query.all():
+        status, color = get_status(item.wqi)
         output.append({
-            "name": item["name"] + " (" + item["location"] + ")",
-            "latitude": item["latitude"],
-            "longitude": item["longitude"],
-            "wqi": item["wqi"],
-            "status": status, # Overwrite static status with dynamically calculated one to be safe, or keep item["status"]
+            "name": item.name + " (" + item.location + ")",
+            "latitude": item.latitude,
+            "longitude": item.longitude,
+            "wqi": item.wqi,
+            "status": status,
             "color": color
         })
 
@@ -739,4 +783,8 @@ def api_wqi():
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
+        try:
+            seed_reference_locations()
+        except Exception as e:
+            print(f"Startup seed failed: {e}")
     app.run(debug=True)

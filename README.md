@@ -31,6 +31,46 @@ A full-stack Flask application to compute, visualize, and manage Water Quality I
   - `workflow.md` — Detailed build workflow and decisions.
   - `architecture.md` — Architectural structure and data flow.
  
+**Project Tree**
+
+```
+
+├─ app.py
+├─ requirements.txt
+├─ Procfile
+├─ README.md
+├─ data
+│  ├─ wqi.db
+│  └─ static_wb.json
+├─ templates
+│  ├─ layout.html
+│  ├─ index.html
+│  ├─ map.html
+│  ├─ data.html
+│  ├─ dashboard.html
+│  ├─ sensors.html
+│  ├─ login.html
+│  ├─ signup.html
+│  └─ user_dashboard.html
+├─ static
+│  ├─ script.js
+│  ├─ map.js
+│  ├─ sensors.js
+│  ├─ chatbot.js
+│  ├─ style.css
+│  └─ js
+│     └─ global_ripple.js
+└─ docs
+   ├─ endpoints.md
+   ├─ architecture.md
+   ├─ technical_overview.md
+   ├─ page_functions.md
+   ├─ limitations.md
+   ├─ workflow.md
+   ├─ judges_qna.md
+   └─ walkthrough_script.md
+```
+
 **Detailed Structure**
 - Pages
   - `templates/layout.html` base layout, navbar, assets

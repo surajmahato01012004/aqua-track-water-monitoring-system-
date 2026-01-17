@@ -1,0 +1,17 @@
+[
+  {"name":"Ganga (Hooghly) River","location":"Kolkata (Dakshineswar)","latitude":22.6531,"longitude":88.3717,"wqi":65,"status":"Poor","category":"River / Drinking Source"},
+  {"name":"Damodar River","location":"Durgapur","latitude":23.5204,"longitude":87.3119,"wqi":55,"status":"Poor","category":"River / Industrial Area"},
+  {"name":"Teesta River","location":"Jalpaiguri","latitude":26.5405,"longitude":88.7193,"wqi":35,"status":"Good","category":"River"},
+  {"name":"Mahananda River","location":"Siliguri","latitude":26.7075,"longitude":88.4300,"wqi":60,"status":"Poor","category":"River / Urban Runoff"},
+  {"name":"Rupnarayan River","location":"Kolaghat","latitude":22.4308,"longitude":87.8700,"wqi":45,"status":"Good","category":"River"},
+  {"name":"Subarnarekha River","location":"Jhargram","latitude":22.4500,"longitude":86.9900,"wqi":40,"status":"Good","category":"River"},
+  {"name":"Jaldhaka River","location":"Mathabhanga","latitude":26.3400,"longitude":89.2100,"wqi":30,"status":"Good","category":"River"},
+  {"name":"Vidyadhari River","location":"Haroa","latitude":22.6000,"longitude":88.6800,"wqi":80,"status":"Very Poor","category":"River / Sewage"},
+  {"name":"Kangsabati River","location":"Midnapore","latitude":22.4200,"longitude":87.3200,"wqi":42,"status":"Good","category":"River / Irrigation"},
+  {"name":"Muriganga River","location":"Kakdwip","latitude":21.8700,"longitude":88.1800,"wqi":50,"status":"Good","category":"Estuary"},
+  {"name":"Hooghly River","location":"Kolkata","latitude":22.5726,"longitude":88.3639,"wqi":62,"status":"Poor","category":"River / Urban"},
+  {"name":"Rabindra Sarobar","location":"Kolkata","latitude":22.5126,"longitude":88.3498,"wqi":45,"status":"Good","category":"Lake / Recreational"},
+  {"name":"East Kolkata Wetlands","location":"Kolkata","latitude":22.5500,"longitude":88.4300,"wqi":55,"status":"Poor","category":"Wetland / Treatment"},
+  {"name":"Subhas Sarovar","location":"Kolkata","latitude":22.5787,"longitude":88.4003,"wqi":40,"status":"Good","category":"Lake / Recreational"},
+  {"name":"Salt Lake Water Body","location":"Bidhannagar","latitude":22.5867,"longitude":88.4173,"wqi":48,"status":"Good","category":"Lake / Urban"}
+]
