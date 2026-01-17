@@ -24,14 +24,7 @@ A full-stack Flask application to compute, visualize, and manage Water Quality I
 - `data/static_wb.json` — Static West Bengal reference data (seeded into DB).
 - `requirements.txt` — Python dependencies.
 - `Procfile` — Production entry (`gunicorn app:app`).
-- `docs/` — Additional documentation:
-  - `technical_overview.md` — Architecture, tech stack choices, chatbot details.
-  - `page_functions.md` — Each page’s functions and relationships.
-  - `limitations.md` — System and chatbot caveats with improvement plan.
-  - `endpoints.md` — API and page endpoints.
-  - `workflow.md` — Detailed build workflow and decisions.
-  - `architecture.md` — Architectural structure and data flow.
- 
+
 **Project Tree**
 
 ```
